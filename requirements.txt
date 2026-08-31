@@ -22,4 +22,4 @@ reportlab>=4.1.0
 
 # Production Database Connectors
 psycopg2-binary>=2.9.9
-streamlit-geolocation>=0.0.14
+streamlit-geolocation>=0.0.8
