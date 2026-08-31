@@ -1,0 +1,44 @@
+name: 30-Minute UrbanPulse Data Refresh
+
+on:
+  schedule:
+    # Runs every 30 minutes automatically
+    - cron: '*/30 * * * *'
+  workflow_dispatch: # Allows manual on-demand trigger from GitHub Actions tab
+
+jobs:
+  refresh-environmental-data:
+    name: Execute 30-Min Telemetry Refresh & AI Briefings
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Execute UrbanPulse ETL Pipeline
+        run: |
+          python daily_etl.py --city all
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DEFAULT_TIMEZONE: "Asia/Kolkata"
+
+      - name: Upload Generated PDF Briefing Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: telemetry-refresh-reports
+          path: exports/*.pdf
+          retention-days: 7

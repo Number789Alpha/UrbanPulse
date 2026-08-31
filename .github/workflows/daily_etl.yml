@@ -1,0 +1,44 @@
+name: Daily UrbanPulse ETL
+
+on:
+  schedule:
+    # Runs daily at 00:00 IST (18:30 UTC previous day)
+    - cron: '30 18 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  run-daily-intelligence:
+    name: Execute Daily Environmental ETL & AI Briefing
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Execute Daily UrbanPulse Pipeline
+        run: |
+          python daily_etl.py --city all
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DEFAULT_TIMEZONE: "Asia/Kolkata"
+
+      - name: Upload Daily PDF Briefing Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: daily-environmental-reports
+          path: exports/*.pdf
+          retention-days: 14

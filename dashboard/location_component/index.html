@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Plus Jakarta Sans", "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+    .container {
+      padding: 2px 0;
+      width: 100%;
+    }
+    .gps-btn {
+      width: 100%;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 11px 16px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+      transition: all 0.2s ease;
+      letter-spacing: 0.02em;
+    }
+    .gps-btn:hover {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.45);
+      transform: translateY(-1px);
+    }
+    .gps-btn:active {
+      transform: translateY(0);
+    }
+    .gps-btn:disabled {
+      opacity: 0.7;
+      cursor: wait;
+    }
+    #status-line {
+      font-size: 11.5px;
+      color: #94a3b8;
+      margin-top: 6px;
+      text-align: center;
+      line-height: 1.4;
+      min-height: 16px;
+    }
+    .pulse-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background: #34d399;
+      border-radius: 50%;
+      margin-right: 4px;
+      animation: blink 1.2s infinite ease-in-out;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 0.3; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.1); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <button class="gps-btn" id="detect-btn" onclick="startDetection()">
+      🎯 Auto-Detect My Live Location
+    </button>
+    <div id="status-line">📍 Uses device GPS & Wi-Fi for exact city & state accuracy</div>
+  </div>
+
+  <script>
+    // Standard Streamlit Component messaging helpers
+    function sendValueToStreamlit(value) {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:setComponentValue",
+        value: value
+      }, "*");
+    }
+
+    function setFrameHeight(height) {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:setFrameHeight",
+        height: height || Math.max(document.body.scrollHeight, 80)
+      }, "*");
+    }
+
+    // Inform Streamlit on render
+    window.addEventListener("message", function(e) {
+      if (e.data && e.data.type === "streamlit:render") {
+        setFrameHeight(Math.max(document.body.scrollHeight, 80));
+      }
+    });
+
+    window.onload = function() {
+      setFrameHeight(Math.max(document.body.scrollHeight, 80));
+    };
+
+    function updateStatus(html) {
+      var el = document.getElementById("status-line");
+      if (el) el.innerHTML = html;
+      setFrameHeight(Math.max(document.body.scrollHeight, 80));
+    }
+
+    function startDetection() {
+      var btn = document.getElementById("detect-btn");
+      if (!navigator.geolocation) {
+        updateStatus('<span style="color:#ef4444;">❌ Geolocation is not supported by your browser.</span>');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="pulse-dot"></span> Acquiring GPS / Wi-Fi Fix...';
+      updateStatus('<span style="color:#38bdf8;">🛰️ Requesting device coordinates...</span>');
+
+      // Attempt 1: High accuracy GPS
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          handlePosition(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
+        },
+        function(error) {
+          // Attempt 2: Fallback to standard/Wi-Fi positioning (faster for laptops/desktops)
+          console.warn("High accuracy GPS failed (" + error.message + "), falling back to Wi-Fi location...");
+          updateStatus('<span style="color:#f59e0b;">Switching to Wi-Fi / Network positioning...</span>');
+          
+          navigator.geolocation.getCurrentPosition(
+            function(fallbackPos) {
+              handlePosition(fallbackPos.coords.latitude, fallbackPos.coords.longitude, fallbackPos.coords.accuracy);
+            },
+            function(finalErr) {
+              btn.disabled = false;
+              btn.innerHTML = '🎯 Auto-Detect My Live Location';
+              var errorMsg = "Could not acquire location.";
+              if (finalErr.code === 1) {
+                errorMsg = "Location permission denied. Please click the lock icon in your URL bar and allow Location.";
+              } else if (finalErr.code === 2) {
+                errorMsg = "Position unavailable. Please try custom coordinates or IP fallback.";
+              } else if (finalErr.code === 3) {
+                errorMsg = "GPS request timed out. Please retry or use City search below.";
+              }
+              updateStatus('<span style="color:#fb7185;">⚠️ ' + errorMsg + '</span>');
+            },
+            { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+          );
+        },
+        { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
+      );
+    }
+
+    function handlePosition(lat, lon, accuracy) {
+      var accText = accuracy ? ' (±' + Math.round(accuracy) + 'm)' : '';
+      updateStatus('<span style="color:#10b981;"><span class="pulse-dot"></span> Fixed' + accText + '! Reverse geocoding...</span>');
+
+      // Reverse geocode via BigDataCloud client API (runs client-side with user IP/GPS context)
+      var bdcUrl = 'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lon + '&localityLanguage=en';
+      
+      fetch(bdcUrl)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          var cityName = data.locality || data.city || data.principalSubdivision || 'Detected City';
+          var stateName = data.principalSubdivision || '';
+          var countryName = data.countryName || 'India';
+          var locality = data.locality || cityName;
+          var district = '';
+          if (data.localityInfo && data.localityInfo.administrative) {
+            for (var i = 0; i < data.localityInfo.administrative.length; i++) {
+              var admin = data.localityInfo.administrative[i];
+              if (admin.description && admin.description.toLowerCase().indexOf('district') !== -1) {
+                district = admin.name.replace(/ district/i, '').replace(/ District/i, '').trim();
+                break;
+              }
+            }
+          }
+
+          updateStatus('<span style="color:#34d399;">✅ Detected: <b>' + cityName + (district ? ' (' + district + ')' : '') + ', ' + stateName + '</b></span>');
+
+          // Send structured location data directly to Python Streamlit backend
+          sendValueToStreamlit({
+            lat: lat,
+            lon: lon,
+            city: cityName,
+            locality: locality,
+            district: district,
+            state: stateName,
+            country: countryName,
+            accuracy: accuracy || 0,
+            timestamp: Date.now()
+          });
+
+          var btn = document.getElementById("detect-btn");
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '✅ Synced: ' + cityName;
+            setTimeout(function() {
+              if (btn) {
+                btn.innerHTML = '🎯 Auto-Detect My Live Location';
+                btn.disabled = false;
+              }
+            }, 3000);
+          }
+        })
+        .catch(function(err) {
+          console.warn("BigDataCloud failed, falling back to OSM Nominatim: ", err);
+          // Fallback to OSM Nominatim
+          var osmUrl = 'https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lon + '&format=json';
+          fetch(osmUrl)
+            .then(function(r) { return r.json(); })
+            .then(function(osmData) {
+              var addr = osmData.address || {};
+              var cityName = addr.city || addr.town || addr.village || addr.city_district || addr.suburb || addr.county || 'Detected City';
+              var stateName = addr.state || addr.region || '';
+              var district = (addr.state_district || addr.county || '').replace(/ district/i, '').trim();
+              var countryName = addr.country || 'India';
+
+              updateStatus('<span style="color:#34d399;">✅ Detected: <b>' + cityName + (district ? ' (' + district + ')' : '') + ', ' + stateName + '</b></span>');
+
+              sendValueToStreamlit({
+                lat: lat,
+                lon: lon,
+                city: cityName,
+                locality: addr.suburb || cityName,
+                district: district,
+                state: stateName,
+                country: countryName,
+                accuracy: accuracy || 0,
+                timestamp: Date.now()
+              });
+
+              var btn = document.getElementById("detect-btn");
+              if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '✅ Synced: ' + cityName;
+                setTimeout(function() {
+                  if (btn) {
+                    btn.innerHTML = '🎯 Auto-Detect My Live Location';
+                    btn.disabled = false;
+                  }
+                }, 3000);
+              }
+            })
+            .catch(function(osmErr) {
+              // If both fail, send raw coordinates and let Python reverse-geocode on server
+              sendValueToStreamlit({
+                lat: lat,
+                lon: lon,
+                city: '',
+                district: '',
+                state: '',
+                country: 'India',
+                accuracy: accuracy || 0,
+                timestamp: Date.now()
+              });
+
+              var btn = document.getElementById("detect-btn");
+              if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '🎯 Auto-Detect My Live Location';
+              }
+            });
+        });
+    }
+  </script>
+</body>
+</html>
