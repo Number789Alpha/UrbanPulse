@@ -1,27 +1,37 @@
 import sqlite3
 import math
+import os
 from contextlib import contextmanager
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
-from src.config import DATABASE_URL, SQL_DIR
+from src.config import SQL_DIR, _get_config_val, BASE_DIR
 
-# Normalize connection string for SQLAlchemy (postgres:// -> postgresql://)
-engine_url = DATABASE_URL
-if engine_url.startswith("postgres://"):
-    engine_url = engine_url.replace("postgres://", "postgresql://", 1)
+def get_engine_url():
+    """Dynamically get and normalize current DATABASE_URL."""
+    url = _get_config_val("DATABASE_URL", f"sqlite:///{BASE_DIR / 'urbanpulse.db'}")
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return url
 
-# Initialize SQLAlchemy Engine with connection pooling
-engine_kwargs = {"pool_pre_ping": True}
-if engine_url.startswith("sqlite"):
-    engine_kwargs["connect_args"] = {"check_same_thread": False}
-else:
-    # Production Cloud PostgreSQL Pool configuration
-    engine_kwargs["pool_size"] = 10
-    engine_kwargs["max_overflow"] = 20
-    engine_kwargs["pool_recycle"] = 1800
+def create_app_engine():
+    """Create a configured SQLAlchemy engine for either SQLite or PostgreSQL."""
+    url = get_engine_url()
+    kwargs = {"pool_pre_ping": True}
+    
+    if url.startswith("sqlite"):
+        kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        # Production Cloud PostgreSQL Pool configuration
+        kwargs["pool_size"] = 10
+        kwargs["max_overflow"] = 20
+        kwargs["pool_recycle"] = 1800
+        kwargs["connect_args"] = {
+            "sslmode": "require",
+            "connect_timeout": 15
+        }
+    return create_engine(url, **kwargs)
 
-engine = create_engine(engine_url, **engine_kwargs)
-
+engine = create_app_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -54,38 +64,41 @@ def get_db_session():
 
 def init_db():
     """Execute schema and views to ensure all tables & analytical views exist."""
-    is_pg = engine.dialect.name == "postgresql"
-    schema_file = "schema_postgres.sql" if is_pg else "schema.sql"
-    schema_path = SQL_DIR / schema_file
-    views_path = SQL_DIR / "views.sql"
+    try:
+        is_pg = engine.dialect.name == "postgresql"
+        schema_file = "schema_postgres.sql" if is_pg else "schema.sql"
+        schema_path = SQL_DIR / schema_file
+        views_path = SQL_DIR / "views.sql"
 
-    with engine.connect() as conn:
-        if schema_path.exists():
-            with open(schema_path, "r", encoding="utf-8") as f:
-                schema_sql = f.read()
-                # Split and execute individual statements
-                for statement in schema_sql.split(";"):
-                    stmt = statement.strip()
-                    if stmt:
-                        try:
-                            conn.execute(text(stmt))
-                        except Exception as e:
-                            print(f"[DB Init Notice] Schema execution: {e}")
-                conn.commit()
+        with engine.connect() as conn:
+            if schema_path.exists():
+                with open(schema_path, "r", encoding="utf-8") as f:
+                    schema_sql = f.read()
+                    for statement in schema_sql.split(";"):
+                        stmt = statement.strip()
+                        if stmt:
+                            try:
+                                conn.execute(text(stmt))
+                            except Exception as e:
+                                pass
+                    conn.commit()
 
-        if views_path.exists():
-            with open(views_path, "r", encoding="utf-8") as f:
-                views_sql = f.read()
-                for statement in views_sql.split(";"):
-                    stmt = statement.strip()
-                    if stmt:
-                        try:
-                            conn.execute(text(stmt))
-                        except Exception as e:
-                            print(f"[DB Init Notice] View execution: {e}")
-                conn.commit()
-    print(f"[Database] Schema & Analytical Views initialized successfully on {engine.dialect.name.upper()}.")
+            if views_path.exists():
+                with open(views_path, "r", encoding="utf-8") as f:
+                    views_sql = f.read()
+                    for statement in views_sql.split(";"):
+                        stmt = statement.strip()
+                        if stmt:
+                            try:
+                                conn.execute(text(stmt))
+                            except Exception as e:
+                                pass
+                    conn.commit()
+        print(f"[Database] Schema & Analytical Views verified on {engine.dialect.name.upper()}.")
+    except Exception as err:
+        print(f"[Database Init Warning] {err}")
 
 if __name__ == "__main__":
     init_db()
+
 

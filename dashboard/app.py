@@ -57,14 +57,15 @@ if css_path.exists():
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 # Ensure Database is Initialized and All States/Cities are Registered
-init_db()
-
-# Auto-seed all states and cities if table is small
-with engine.connect() as conn:
-    c_count = conn.execute(text("SELECT COUNT(*) FROM cities")).scalar()
-if c_count < len(PRECONFIGURED_CITIES):
-    from src.seed_cities import seed_all_states_and_cities
-    seed_all_states_and_cities()
+try:
+    init_db()
+    with engine.connect() as conn:
+        c_count = conn.execute(text("SELECT COUNT(*) FROM cities")).scalar()
+    if c_count < len(PRECONFIGURED_CITIES):
+        from src.seed_cities import seed_all_states_and_cities
+        seed_all_states_and_cities()
+except Exception as e:
+    print(f"[Notice] Database connection / seeding notice: {e}")
 
 # Initialize session state for selected state & city
 if "app_selected_state" not in st.session_state:
