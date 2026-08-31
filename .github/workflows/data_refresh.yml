@@ -29,9 +29,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Execute UrbanPulse ETL Pipeline
+      - name: Execute UrbanPulse Fast Parallel ETL Pipeline
         run: |
-          python daily_etl.py --city all
+          python daily_etl.py --city top --workers 10
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

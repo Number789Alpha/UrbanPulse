@@ -106,7 +106,7 @@ def generate_ai_narrative(
             if row and row[0]:
                 return row[0]
 
-    facts_json = json.dumps(facts_payload, indent=2)
+    facts_json = json.dumps(facts_payload, indent=2, default=str)
 
     prompt = f"""You are the Chief Environmental Analyst for UrbanPulse, a city intelligence platform.
 Write a crisp, authoritative 4-to-5 sentence daily executive briefing for the city of {city_name} on {date_str}.

@@ -116,29 +116,61 @@ def run_city_etl(city_name: str, generate_pdf: bool = True, force_ai: bool = Fal
 
     return True
 
-def run_daily_pipeline(city: str = "default", generate_pdf: bool = True, force_ai: bool = False):
-    """Run master daily ETL for single city or all registered cities."""
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def run_daily_pipeline(city: str = "default", generate_pdf: bool = True, force_ai: bool = False, max_workers: int = 10):
+    """Run master daily ETL with concurrent thread execution for lightning speed."""
     init_db()
 
     if city == "all":
         # Get all distinct cities in database
         with engine.connect() as conn:
-            city_rows = conn.execute(text("SELECT city_name FROM cities")).fetchall()
-        cities_to_run = [r[0] for r in city_rows] if city_rows else list(PRECONFIGURED_CITIES.keys())[:4]
+            city_rows = conn.execute(text("SELECT city_name FROM cities ORDER BY city_id ASC")).fetchall()
+        cities_to_run = [r[0] for r in city_rows] if city_rows else list(PRECONFIGURED_CITIES.keys())[:10]
+    elif city == "top":
+        # 36 Key State Capitals & Major Metros for fast recurring telemetry sync
+        from src.config import PRECONFIGURED_CITIES
+        state_capitals = [
+            "Hyderabad", "Amaravati", "Itanagar", "Dispur", "Patna", "Raipur", "Panaji", "Gandhinagar",
+            "Chandigarh", "Shimla", "Ranchi", "Bengaluru", "Thiruvananthapuram", "Bhopal", "Mumbai",
+            "Imphal", "Shillong", "Aizawl", "Kohima", "Bhubaneswar", "Jaipur", "Gangtok", "Chennai",
+            "Agartala", "Lucknow", "Dehradun", "Kolkata", "Delhi", "Srinagar", "Pune", "Ahmedabad", "Kochi"
+        ]
+        cities_to_run = [c for c in state_capitals if c in PRECONFIGURED_CITIES]
     elif city == "default":
         cities_to_run = [DEFAULT_CITY]
     else:
         cities_to_run = [city]
 
-    for c in cities_to_run:
-        try:
-            run_city_etl(c, generate_pdf=generate_pdf, force_ai=force_ai)
-        except Exception as e:
-            print(f"[ETL Error] Failed processing for {c}: {e}")
+    total_cities = len(cities_to_run)
+    print(f"\n🚀 Launching UrbanPulse Parallel ETL for {total_cities} cities with {max_workers} worker threads...")
+
+    completed = 0
+    errors = 0
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_city = {
+            executor.submit(run_city_etl, c, generate_pdf=generate_pdf, force_ai=force_ai): c
+            for c in cities_to_run
+        }
+        for future in as_completed(future_to_city):
+            c_name = future_to_city[future]
+            try:
+                success = future.result()
+                if success:
+                    completed += 1
+                else:
+                    errors += 1
+            except Exception as e:
+                errors += 1
+                print(f"[ETL Error] {c_name} failed: {e}")
+
+    print(f"\n🏁 Parallel ETL Complete: {completed}/{total_cities} cities updated successfully ({errors} failed).")
 
 def main():
     parser = argparse.ArgumentParser(description="UrbanPulse Daily ETL Orchestrator")
-    parser.add_argument("--city", type=str, default="default", help="City name, 'all', or 'default'")
+    parser.add_argument("--city", type=str, default="top", help="City name, 'all', 'top', or 'default'")
+    parser.add_argument("--workers", type=int, default=10, help="Number of concurrent worker threads (default: 10)")
     parser.add_argument("--no-pdf", action="store_true", help="Skip PDF report generation")
     parser.add_argument("--force-ai", action="store_true", help="Force re-generation of AI narrative")
     args = parser.parse_args()
@@ -146,7 +178,8 @@ def main():
     run_daily_pipeline(
         city=args.city,
         generate_pdf=not args.no_pdf,
-        force_ai=args.force_ai
+        force_ai=args.force_ai,
+        max_workers=args.workers
     )
 
 if __name__ == "__main__":
