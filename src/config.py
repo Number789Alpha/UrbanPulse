@@ -5,15 +5,28 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+def _get_config_val(key: str, default: str = "") -> str:
+    """Retrieve setting from streamlit secrets, environment, or default."""
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and key in st.secrets:
+            val = str(st.secrets[key]).strip()
+            if val:
+                return val
+    except Exception:
+        pass
+    return os.getenv(key, default).strip() if os.getenv(key) else default
+
 SQL_DIR = BASE_DIR / "sql"
 EXPORTS_DIR = BASE_DIR / "exports"
 EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'urbanpulse.db'}")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-DEFAULT_CITY = os.getenv("DEFAULT_CITY", "Hyderabad")
-DEFAULT_TIMEZONE = os.getenv("DEFAULT_TIMEZONE", "Asia/Kolkata")
-DEFAULT_BACKFILL_DAYS = int(os.getenv("DEFAULT_BACKFILL_DAYS", "180"))
+
+DATABASE_URL = _get_config_val("DATABASE_URL", f"sqlite:///{BASE_DIR / 'urbanpulse.db'}")
+ANTHROPIC_API_KEY = _get_config_val("ANTHROPIC_API_KEY", "")
+GEMINI_API_KEY = _get_config_val("GEMINI_API_KEY", "")
+DEFAULT_CITY = _get_config_val("DEFAULT_CITY", "Hyderabad")
+DEFAULT_TIMEZONE = _get_config_val("DEFAULT_TIMEZONE", "Asia/Kolkata")
+DEFAULT_BACKFILL_DAYS = int(_get_config_val("DEFAULT_BACKFILL_DAYS", "180"))
 
 # Thresholds for Hazard Analysis and Risk Scoring
 THRESHOLDS = {
