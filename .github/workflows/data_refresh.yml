@@ -5,6 +5,9 @@ on:
     # Runs every 30 minutes automatically
     - cron: '*/30 * * * *'
   workflow_dispatch: # Allows manual on-demand trigger from GitHub Actions tab
+  push:
+    branches:
+      - main
 
 jobs:
   refresh-environmental-data:
