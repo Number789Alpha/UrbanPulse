@@ -1,10 +1,12 @@
 # 🌿 UrbanPulse — Daily City Environmental Intelligence Platform
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit%20Cloud-FF4B4B.svg?style=for-the-badge&logo=streamlit&logoColor=white)](https://urbanpulse-ffohnogagy7zsj4jgjjjki.streamlit.app/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Streamlit](https://img.shields.io/badge/dashboard-Streamlit-FF4B4B.svg)](https://streamlit.io/)
 [![PostgreSQL & SQLite](https://img.shields.io/badge/database-SQL-336791.svg)](https://www.sqlite.org/)
 [![Open-Meteo](https://img.shields.io/badge/data%20source-Open--Meteo-10b981.svg)](https://open-meteo.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+> 🚀 **Live Dashboard:** [https://urbanpulse-ffohnogagy7zsj4jgjjjki.streamlit.app/](https://urbanpulse-ffohnogagy7zsj4jgjjjki.streamlit.app/)
 
 > **UrbanPulse** is a self-updating environmental intelligence platform that ingests daily weather, air quality, solar, and UV data, stores it in a structured SQL database, and computes **three distinct analytical products from one single automated pipeline**:
 > 1. **🌿 Environmental Score (0–100)**: Holistic environmental wellness index.
@@ -76,7 +78,7 @@
 UrbanPulse/
 ├── .github/
 │   └── workflows/
-│       └── daily_etl.yml         # GitHub Actions automated daily run (18:30 UTC / 00:00 IST)
+│       └── data_refresh.yml      # GitHub Actions automated 30-min data refresh (*/30 * * * *)
 ├── sql/
 │   ├── schema.sql                # Table definitions (cities, raw_daily_metrics, api_logs, ai_narratives)
 │   └── views.sql                 # SQL analytical views (rolling 7/30d avg, z-scores, percentiles)
@@ -164,13 +166,15 @@ Open your browser at `http://localhost:8501`.
 
 ## ⏰ Scheduling Options
 
-- **Option A: GitHub Actions (Recommended for Portfolios)**:
-  Runs automatically at `00:00 IST` (18:30 UTC) every night via `.github/workflows/daily_etl.yml`. Zero server costs.
+- **Option A: GitHub Actions (Automated Every 30 Minutes)**:
+  Configured in `.github/workflows/data_refresh.yml` to trigger every 30 minutes (`*/30 * * * *`). Refreshes telemetry across top state capitals and major metros automatically with zero server costs.
 - **Option B: APScheduler (Always-on Python Process)**:
-  `python src/scheduler.py`
+  ```bash
+  python src/scheduler.py  # Runs immediately, then repeats every 30 minutes
+  ```
 - **Option C: OS-level Cron (Linux/WSL)**:
   ```cron
-  0 0 * * * /usr/bin/python3 /path/to/UrbanPulse/daily_etl.py --city all >> /path/to/logs.log 2>&1
+  */30 * * * * /usr/bin/python3 /path/to/UrbanPulse/daily_etl.py --city top >> /path/to/logs.log 2>&1
   ```
 
 ---

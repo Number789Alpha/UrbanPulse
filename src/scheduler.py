@@ -19,25 +19,27 @@ def create_scheduler(blocking: bool = True):
     scheduler = scheduler_cls(timezone=tz)
     return scheduler
 
-def start_scheduler_service():
+def start_scheduler_service(interval_minutes: int = 30, city: str = "top"):
     """
     Run standalone APScheduler blocking process for unattended server deployments.
-    Triggers daily_etl at 00:00 IST every day.
+    Triggers UrbanPulse ETL every 30 minutes (or specified interval).
     """
     from daily_etl import run_daily_pipeline
 
     scheduler = create_scheduler(blocking=True)
 
-    @scheduler.scheduled_job('cron', hour=0, minute=0)
+    @scheduler.scheduled_job('interval', minutes=interval_minutes)
     def scheduled_etl_job():
-        print(f"\n[Scheduler] Triggering Daily UrbanPulse ETL at {datetime.now()} (00:00 IST)")
-        run_daily_pipeline()
+        print(f"\n[Scheduler] Triggering UrbanPulse ETL Refresh at {datetime.now()} ({DEFAULT_TIMEZONE})...")
+        run_daily_pipeline(city=city, max_workers=10)
 
-    print(f"[Scheduler] UrbanPulse scheduler started. Scheduled to run daily at 00:00 {DEFAULT_TIMEZONE}...")
+    print(f"[Scheduler] UrbanPulse scheduler started. Scheduled to run every {interval_minutes} minutes ({DEFAULT_TIMEZONE})...")
+    print(f"[Scheduler] Executing initial run now...")
+    run_daily_pipeline(city=city, max_workers=10)
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
         print("[Scheduler] Stopped.")
 
 if __name__ == "__main__":
-    start_scheduler_service()
+    start_scheduler_service(interval_minutes=30, city="top")
