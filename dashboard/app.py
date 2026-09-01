@@ -338,12 +338,12 @@ with engine.connect() as conn:
         params={"city_id": city_id}
     )
 
-# If no data exists yet for this newly selected/added city, auto-sync live forecast + air quality on the fly!
-if df_history.empty:
+# If no data exists yet or today's data is not yet in the database, auto-sync live forecast + air quality on the fly!
+if df_history.empty or (today_str not in df_history["date"].values and date_mode == "⚡ Today (Live Real-Time)"):
     with st.spinner(f"📡 Fetching live environmental telemetry for **{selected_city_name}**..."):
         from daily_etl import run_city_etl
         try:
-            run_city_etl(selected_city_name, generate_pdf=True)
+            run_city_etl(selected_city_name, generate_pdf=False)
             with engine.connect() as conn:
                 df_history = pd.read_sql(
                     text("SELECT * FROM raw_daily_metrics WHERE city_id = :city_id ORDER BY date ASC"),
