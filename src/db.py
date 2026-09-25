@@ -7,10 +7,38 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from src.config import SQL_DIR, _get_config_val, BASE_DIR
 
 def get_engine_url():
-    """Dynamically get and normalize current DATABASE_URL."""
+    """Dynamically get and normalize current DATABASE_URL with intelligent driver fallback."""
     url = _get_config_val("DATABASE_URL", f"sqlite:///{BASE_DIR / 'urbanpulse.db'}")
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
+
+    # Check PostgreSQL drivers available in environment
+    if url.startswith("postgresql"):
+        has_psycopg3 = False
+        has_psycopg2 = False
+        try:
+            import psycopg
+            has_psycopg3 = True
+        except ImportError:
+            pass
+        try:
+            import psycopg2
+            has_psycopg2 = True
+        except ImportError:
+            pass
+
+        if url.startswith("postgresql+psycopg://") and not has_psycopg3 and has_psycopg2:
+            url = url.replace("postgresql+psycopg://", "postgresql+psycopg2://", 1)
+        elif url.startswith("postgresql+psycopg2://") and not has_psycopg2 and has_psycopg3:
+            url = url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
+        elif url.startswith("postgresql://"):
+            if has_psycopg3 and not has_psycopg2:
+                url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+            elif has_psycopg2:
+                url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+            elif has_psycopg3:
+                url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+
     return url
 
 def create_app_engine():
