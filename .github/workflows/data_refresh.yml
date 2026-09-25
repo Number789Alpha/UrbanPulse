@@ -28,6 +28,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install --no-cache-dir "psycopg[binary]>=3.1.18" "psycopg2-binary>=2.9.9"
 
       - name: Execute UrbanPulse Fast Parallel ETL Pipeline
         run: |
