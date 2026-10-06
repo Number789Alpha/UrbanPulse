@@ -6,18 +6,35 @@ from sqlalchemy import text
 from src.db import engine
 from src.config import THRESHOLDS
 
+def _clean_metric(val: Any, default: float) -> float:
+    """
+    Safely extract numeric metric value, handling None, np.nan, float('nan'),
+    string numbers, or unparseable objects without raising ValueError or returning NaN.
+    """
+    if val is None:
+        return default
+    try:
+        if pd.isna(val):
+            return default
+        f = float(val)
+        if np.isnan(f) or np.isinf(f):
+            return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
 def compute_environmental_score(metrics: Dict[str, Any]) -> Dict[str, Any]:
     """
     Compute overall Environmental Score (0-100) and component sub-scores.
     Higher score = healthier, cleaner, more comfortable environment.
     """
-    aqi = metrics.get("aqi_us") or 50
-    temp_max = metrics.get("temp_max") or 25.0
-    temp_min = metrics.get("temp_min") or 18.0
-    temp_mean = metrics.get("temp_mean") or ((temp_max + temp_min) / 2.0)
-    humidity = metrics.get("humidity") or 50.0
-    rainfall = metrics.get("rainfall_mm") or 0.0
-    uv = metrics.get("uv_index") or 5.0
+    aqi = _clean_metric(metrics.get("aqi_us"), 50.0)
+    temp_max = _clean_metric(metrics.get("temp_max"), 25.0)
+    temp_min = _clean_metric(metrics.get("temp_min"), 18.0)
+    temp_mean = _clean_metric(metrics.get("temp_mean"), (temp_max + temp_min) / 2.0)
+    humidity = _clean_metric(metrics.get("humidity"), 50.0)
+    rainfall = _clean_metric(metrics.get("rainfall_mm"), 0.0)
+    uv = _clean_metric(metrics.get("uv_index"), 5.0)
 
     # 1. Air Quality Sub-Score (0-100): 100 = 0 AQI, 0 = 300+ AQI
     if aqi <= 50:
@@ -92,15 +109,15 @@ def compute_activity_index(metrics: Dict[str, Any]) -> Dict[str, Any]:
     Compute activity-specific suitability scores (0-100%), pros, cons, and recommended time windows
     across 6 core outdoor activities.
     """
-    aqi = float(metrics.get("aqi_us") or 50.0)
-    temp_max = float(metrics.get("temp_max") or 25.0)
-    temp_min = float(metrics.get("temp_min") or 20.0)
-    humidity = float(metrics.get("humidity") or 50.0)
-    wind_speed = float(metrics.get("wind_speed") or 10.0)
-    rainfall = float(metrics.get("rainfall_mm") or 0.0)
-    solar = float(metrics.get("solar_radiation") or 15.0)
-    uv = float(metrics.get("uv_index") or 5.0)
-    pm25 = float(metrics.get("pm2_5") or 20.0)
+    aqi = _clean_metric(metrics.get("aqi_us"), 50.0)
+    temp_max = _clean_metric(metrics.get("temp_max"), 25.0)
+    temp_min = _clean_metric(metrics.get("temp_min"), 20.0)
+    humidity = _clean_metric(metrics.get("humidity"), 50.0)
+    wind_speed = _clean_metric(metrics.get("wind_speed"), 10.0)
+    rainfall = _clean_metric(metrics.get("rainfall_mm"), 0.0)
+    solar = _clean_metric(metrics.get("solar_radiation"), 15.0)
+    uv = _clean_metric(metrics.get("uv_index"), 5.0)
+    pm25 = _clean_metric(metrics.get("pm2_5"), 20.0)
 
     # 1. Jogging / Running Score
     jog_aqi_penalty = min(55, (aqi / 150.0) * 55)
@@ -111,8 +128,9 @@ def compute_activity_index(metrics: Dict[str, Any]) -> Dict[str, Any]:
 
     jog_pros = []
     jog_cons = []
-    if aqi <= 50: jog_pros.append("Clean air with low particulate load (AQI " + str(int(aqi)) + ")")
-    else: jog_cons.append("Elevated AQI (" + str(int(aqi)) + ") increases respiratory strain during cardio")
+    aqi_int = int(round(aqi))
+    if aqi <= 50: jog_pros.append(f"Clean air with low particulate load (AQI {aqi_int})")
+    else: jog_cons.append(f"Elevated AQI ({aqi_int}) increases respiratory strain during cardio")
     if 16 <= temp_max <= 24: jog_pros.append(f"Optimal running temperature ({temp_max:.1f}°C)")
     elif temp_max > 28: jog_cons.append(f"High daytime temperature ({temp_max:.1f}°C) poses dehydration risk")
     elif temp_max < 12: jog_cons.append(f"Chilly air ({temp_max:.1f}°C) may cause airway constriction")
@@ -261,39 +279,40 @@ def compute_city_risk_score(metrics: Dict[str, Any], z_scores: Optional[Dict[str
     """
     Compute multi-hazard City Risk Score across Heat, Air Quality, Flooding, and Wind storms.
     """
-    temp_max = metrics.get("temp_max") or 25.0
-    pm25 = metrics.get("pm2_5") or 25.0
-    aqi = metrics.get("aqi_us") or 50
-    rainfall = metrics.get("rainfall_mm") or 0.0
-    wind_speed = metrics.get("wind_speed") or 10.0
-    uv = metrics.get("uv_index") or 5.0
+    temp_max = _clean_metric(metrics.get("temp_max"), 25.0)
+    pm25 = _clean_metric(metrics.get("pm2_5"), 25.0)
+    aqi = _clean_metric(metrics.get("aqi_us"), 50.0)
+    rainfall = _clean_metric(metrics.get("rainfall_mm"), 0.0)
+    wind_speed = _clean_metric(metrics.get("wind_speed"), 10.0)
+    uv = _clean_metric(metrics.get("uv_index"), 5.0)
 
     z_scores = z_scores or {}
-    pm25_z = z_scores.get("pm2_5_zscore", 0.0)
-    temp_z = z_scores.get("temp_zscore", 0.0)
-    rain_z = z_scores.get("rainfall_zscore", 0.0)
+    pm25_z = _clean_metric(z_scores.get("pm2_5_zscore"), 0.0)
+    temp_z = _clean_metric(z_scores.get("temp_zscore"), 0.0)
+    rain_z = _clean_metric(z_scores.get("rainfall_zscore"), 0.0)
 
     alerts: List[Dict[str, str]] = []
 
     # 1. Heatwave Risk
     if temp_max >= THRESHOLDS["heatwave_severe_temp"] or temp_z >= 2.5:
         heat_risk = "Severe"
-        alerts.append({"type": "Heat Alert", "severity": "Severe", "msg": f"Extreme heatwave warning: {temp_max}°C (+{temp_z:.1f}σ anomaly). Stay hydrated."})
+        alerts.append({"type": "Heat Alert", "severity": "Severe", "msg": f"Extreme heatwave warning: {temp_max:.1f}°C (+{temp_z:.1f}σ anomaly). Stay hydrated."})
     elif temp_max >= THRESHOLDS["heatwave_high_temp"] or temp_z >= 1.8:
         heat_risk = "High"
-        alerts.append({"type": "Heat Warning", "severity": "High", "msg": f"Elevated thermal stress: {temp_max}°C. Limit afternoon exposure."})
+        alerts.append({"type": "Heat Warning", "severity": "High", "msg": f"Elevated thermal stress: {temp_max:.1f}°C. Limit afternoon exposure."})
     elif temp_max >= 32.0:
         heat_risk = "Moderate"
     else:
         heat_risk = "Low"
 
     # 2. Air Quality / Smog Risk
+    aqi_int = int(round(aqi))
     if pm25 >= THRESHOLDS["air_severe_pm25"] or aqi >= 250 or pm25_z >= 2.5:
         air_risk = "Severe"
-        alerts.append({"type": "Air Hazard", "severity": "Severe", "msg": f"Hazardous air pollution (PM2.5: {pm25} µg/m³, AQI: {aqi}). N95 masks advised."})
+        alerts.append({"type": "Air Hazard", "severity": "Severe", "msg": f"Hazardous air pollution (PM2.5: {pm25:.1f} µg/m³, AQI: {aqi_int}). N95 masks advised."})
     elif pm25 >= THRESHOLDS["air_high_pm25"] or aqi >= 150 or pm25_z >= 1.8:
         air_risk = "High"
-        alerts.append({"type": "Air Advisory", "severity": "High", "msg": f"Unhealthy air for sensitive groups (AQI: {aqi}). Keep windows closed."})
+        alerts.append({"type": "Air Advisory", "severity": "High", "msg": f"Unhealthy air for sensitive groups (AQI: {aqi_int}). Keep windows closed."})
     elif pm25 >= 35.0 or aqi >= 100:
         air_risk = "Moderate"
     else:
@@ -302,10 +321,10 @@ def compute_city_risk_score(metrics: Dict[str, Any], z_scores: Optional[Dict[str
     # 3. Flash Flood / Heavy Rain Risk
     if rainfall >= THRESHOLDS["flood_severe_rain"] or rain_z >= 2.5:
         rain_risk = "Severe"
-        alerts.append({"type": "Flood Warning", "severity": "Severe", "msg": f"Torrential precipitation ({rainfall} mm). Waterlogging & commute disruptions likely."})
+        alerts.append({"type": "Flood Warning", "severity": "Severe", "msg": f"Torrential precipitation ({rainfall:.1f} mm). Waterlogging & commute disruptions likely."})
     elif rainfall >= THRESHOLDS["flood_high_rain"] or rain_z >= 1.8:
         rain_risk = "High"
-        alerts.append({"type": "Rain Advisory", "severity": "High", "msg": f"Heavy rainfall ({rainfall} mm). Plan travel accordingly."})
+        alerts.append({"type": "Rain Advisory", "severity": "High", "msg": f"Heavy rainfall ({rainfall:.1f} mm). Plan travel accordingly."})
     elif rainfall >= 10.0:
         rain_risk = "Moderate"
     else:
@@ -314,10 +333,10 @@ def compute_city_risk_score(metrics: Dict[str, Any], z_scores: Optional[Dict[str
     # 4. Windstorm Risk
     if wind_speed >= THRESHOLDS["storm_severe_wind"]:
         wind_risk = "Severe"
-        alerts.append({"type": "Gale Warning", "severity": "Severe", "msg": f"Severe wind gusts ({wind_speed} km/h). Secure outdoor items."})
+        alerts.append({"type": "Gale Warning", "severity": "Severe", "msg": f"Severe wind gusts ({wind_speed:.1f} km/h). Secure outdoor items."})
     elif wind_speed >= THRESHOLDS["storm_high_wind"]:
         wind_risk = "High"
-        alerts.append({"type": "Wind Advisory", "severity": "High", "msg": f"High winds ({wind_speed} km/h). Caution for cycling & high-profile vehicles."})
+        alerts.append({"type": "Wind Advisory", "severity": "High", "msg": f"High winds ({wind_speed:.1f} km/h). Caution for cycling & high-profile vehicles."})
     elif wind_speed >= 25.0:
         wind_risk = "Moderate"
     else:
@@ -391,8 +410,13 @@ def get_historical_and_anomaly_stats(city_id: int, target_date: Optional[str] = 
         avg_7 = float(clean.head(7).mean())
         avg_30 = float(clean.mean())
         std_30 = float(clean.std(ddof=1))
+        if np.isnan(avg_7): avg_7 = val
+        if np.isnan(avg_30): avg_30 = val
+        if np.isnan(std_30): std_30 = 0.0
         zscore = float((val - avg_30) / std_30) if std_30 > 0.001 else 0.0
         diff_pct = float(((val - avg_7) / avg_7) * 100.0) if avg_7 > 0.001 else 0.0
+        if np.isnan(zscore): zscore = 0.0
+        if np.isnan(diff_pct): diff_pct = 0.0
         return {
             "7d_avg": round(avg_7, 2),
             "30d_avg": round(avg_30, 2),
@@ -401,10 +425,10 @@ def get_historical_and_anomaly_stats(city_id: int, target_date: Optional[str] = 
             "diff_pct": round(diff_pct, 1)
         }
 
-    pm25_val = latest_row.get("pm2_5") or 0.0
-    temp_val = latest_row.get("temp_max") or 0.0
-    rain_val = latest_row.get("rainfall_mm") or 0.0
-    wind_val = latest_row.get("wind_speed") or 0.0
+    pm25_val = _clean_metric(latest_row.get("pm2_5"), 0.0)
+    temp_val = _clean_metric(latest_row.get("temp_max"), 0.0)
+    rain_val = _clean_metric(latest_row.get("rainfall_mm"), 0.0)
+    wind_val = _clean_metric(latest_row.get("wind_speed"), 0.0)
 
     pm25_stats = calc_stats(df["pm2_5"], pm25_val)
     temp_stats = calc_stats(df["temp_max"], temp_val)
@@ -414,7 +438,7 @@ def get_historical_and_anomaly_stats(city_id: int, target_date: Optional[str] = 
     # 90-day percentile rank
     def calc_percentile(series: pd.Series, val: float) -> int:
         clean = series.dropna()
-        if len(clean) == 0:
+        if len(clean) == 0 or np.isnan(val):
             return 50
         rank = (clean < val).sum() / len(clean) * 100.0
         return int(round(rank))

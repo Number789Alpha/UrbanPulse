@@ -618,8 +618,8 @@ elif menu == "🏆 National & State Leaderboard":
             text("""
                 SELECT 
                     c.city_name, c.admin1 AS state_region, c.country,
-                    m.date, m.temp_max, m.temp_min, m.humidity, m.rainfall_mm,
-                    m.pm2_5, m.aqi_us, m.uv_index
+                    m.date, m.temp_max, m.temp_min, m.temp_mean, m.humidity, m.rainfall_mm,
+                    m.wind_speed, m.solar_radiation, m.pm2_5, m.aqi_us, m.uv_index
                 FROM cities c
                 JOIN (
                     SELECT city_id, MAX(date) as max_date
@@ -639,7 +639,7 @@ elif menu == "🏆 National & State Leaderboard":
         # Calculate Environmental Scores for leaderboard
         leaderboard_rows = []
         for _, row in all_cities_metrics.iterrows():
-            row_dict = row.to_dict()
+            row_dict = {k: (v if pd.notna(v) else None) for k, v in row.to_dict().items()}
             e_score = compute_environmental_score(row_dict)
             a_idx = compute_activity_index(row_dict)
             r_score = compute_city_risk_score(row_dict)
@@ -649,7 +649,7 @@ elif menu == "🏆 National & State Leaderboard":
                 "State / Region": row["state_region"] or "India",
                 "Environmental Score": e_score["score"],
                 "Condition": e_score["category"],
-                "AQI": f"{int(row['aqi_us'])}" if pd.notna(row["aqi_us"]) else "50",
+                "AQI": f"{int(round(float(row['aqi_us'])))}" if pd.notna(row["aqi_us"]) else "50",
                 "PM2.5 (µg/m³)": f"{float(row['pm2_5']):.1f}" if pd.notna(row["pm2_5"]) else "15.0",
                 "Temp Max (°C)": f"{float(row['temp_max']):.1f}°C" if pd.notna(row["temp_max"]) else "—",
                 "Top Activity": a_idx["jogging"]["name"] if a_idx["jogging"]["score"] >= 60 else a_idx["walking"]["name"],

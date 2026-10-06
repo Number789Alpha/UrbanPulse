@@ -19,14 +19,29 @@ def _generate_rule_based_narrative(city_name: str, date_str: str, facts: Dict[st
     temp_s = facts.get("temp_stats", {})
     pctl = facts.get("percentiles", {})
 
-    temp_max = float(metrics.get("temp_max") or 28.0)
-    temp_min = float(metrics.get("temp_min") or 20.0)
-    aqi = int(metrics.get("aqi_us") or 65)
-    pm25 = float(metrics.get("pm2_5") or 22.0)
-    rainfall = float(metrics.get("rainfall_mm") or 0.0)
-    humidity = float(metrics.get("humidity") or 55.0)
-    uv = float(metrics.get("uv_index") or 5.0)
-    wind_spd = float(metrics.get("wind_speed") or 10.0)
+    def _clean_num(val: Any, default: float) -> float:
+        if val is None:
+            return default
+        try:
+            import pandas as pd
+            import numpy as np
+            if pd.isna(val):
+                return default
+            f = float(val)
+            if np.isnan(f) or np.isinf(f):
+                return default
+            return f
+        except Exception:
+            return default
+
+    temp_max = _clean_num(metrics.get("temp_max"), 28.0)
+    temp_min = _clean_num(metrics.get("temp_min"), 20.0)
+    aqi = int(round(_clean_num(metrics.get("aqi_us"), 65.0)))
+    pm25 = _clean_num(metrics.get("pm2_5"), 22.0)
+    rainfall = _clean_num(metrics.get("rainfall_mm"), 0.0)
+    humidity = _clean_num(metrics.get("humidity"), 55.0)
+    uv = _clean_num(metrics.get("uv_index"), 5.0)
+    wind_spd = _clean_num(metrics.get("wind_speed"), 10.0)
 
     # 1. Executive Synthesis
     env_score = env.get("score", 65.0)
